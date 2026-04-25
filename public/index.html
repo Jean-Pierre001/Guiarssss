@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Triskel QR</title>
+</head>
+<body style="background:#111;color:#fff;text-align:center;font-family:sans-serif;">
+
+  <h2>Generar QR</h2>
+
+  <form action="/generate" method="POST">
+    <textarea name="text" placeholder="Ej: Baño a la derecha"
+      style="width:300px;height:80px;" required></textarea>
+
+    <br><br>
+
+    <select name="type">
+      <option value="plain">QR Plano (offline)</option>
+      <option value="smart">QR Inteligente (URL)</option>
+    </select>
+
+    <br><br>
+
+    <button type="submit">Generar</button>
+  </form>
+
+</body>
+</html>
