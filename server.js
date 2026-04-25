@@ -3,6 +3,8 @@ const fs = require("fs");
 const path = require("path");
 
 const app = express();
+app.set("trust proxy", true); // 🔥 necesario en Render
+
 const PORT = process.env.PORT || 3000;
 
 const DATA_FILE = path.join(__dirname, "data.json");
@@ -43,7 +45,9 @@ app.post("/generate", (req, res) => {
   data[id] = { text };
   saveData(data);
 
-  const url = `${req.protocol}://${req.get("host")}/qr/${id}`;
+  // 🔥 URL correcta (forzada a HTTPS para evitar errores en Flutter)
+  const url = `https://triskel-qr.onrender.com/qr/${id}`;
+
   return res.send(renderResult(url));
 });
 
