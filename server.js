@@ -8,17 +8,20 @@ const PORT = process.env.PORT || 3000;
 
 const DATA_FILE = path.join(__dirname, "data.json");
 
-// 🔐 CLAVES (CAMBIAR EN PRODUCCIÓN)
+// 🔐 CLAVES (DEBEN SER IGUALES EN FLUTTER)
 const AES_KEY = crypto
   .createHash("sha256")
   .update("CLAVE_SUPER_SECRETA_TRISKEL_2026")
-  .digest(); // 32 bytes
+  .digest();
 
 const HMAC_KEY = "OTRA_CLAVE_SECRETA_PARA_FIRMAS";
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static("public"));
+
+// ===============================
+// UTILIDADES
+// ===============================
 
 function loadData() {
   if (!fs.existsSync(DATA_FILE)) return {};
@@ -33,7 +36,7 @@ function generateId() {
   return Math.random().toString(36).substring(2, 8);
 }
 
-// 🔐 BASE64 URL SAFE
+// base64url
 function toBase64Url(buffer) {
   return buffer
     .toString("base64")
@@ -42,7 +45,7 @@ function toBase64Url(buffer) {
     .replace(/=+$/, "");
 }
 
-// 🔐 CIFRAR TEXTO
+// AES-256-CBC
 function encrypt(text) {
   const iv = crypto.randomBytes(16);
 
@@ -57,27 +60,33 @@ function encrypt(text) {
   };
 }
 
-// 🔐 FIRMA HMAC
+// HMAC SHA256
 function sign(data) {
   return toBase64Url(
     crypto.createHmac("sha256", HMAC_KEY).update(data).digest()
   );
 }
 
-// 👉 HOME
+// ===============================
+// RUTAS
+// ===============================
+
+// HOME
 app.get("/", (req, res) => {
   res.send(`
   <html>
   <body style="background:#111;color:#fff;text-align:center;font-family:sans-serif;">
-    <h2>Generar QR</h2>
+    <h2>Triskel QR</h2>
 
     <form action="/generate" method="POST">
-      <textarea name="text" placeholder="Ej: Baño al frente" required style="width:300px;height:80px;"></textarea>
+      <textarea name="text" placeholder="Ej: Baño al frente"
+        style="width:300px;height:80px;" required></textarea>
+
       <br><br>
 
       <select name="type">
-        <option value="plain">QR Plano (Seguro)</option>
-        <option value="smart">QR Inteligente</option>
+        <option value="plain">QR Seguro (AES + HMAC)</option>
+        <option value="smart">QR URL</option>
       </select>
 
       <br><br>
@@ -88,17 +97,16 @@ app.get("/", (req, res) => {
   `);
 });
 
-// 👉 GENERAR QR
+// GENERAR QR
 app.post("/generate", (req, res) => {
   const { text, type } = req.body;
 
-  if (!text) {
-    return res.status(400).send("Texto requerido");
-  }
+  if (!text) return res.status(400).send("Texto requerido");
 
-  // 🔐 QR SEGURO (AES + HMAC)
+  // 🔐 QR SEGURO
   if (type === "plain") {
-    const encrypted = encrypt(text);
+    // IMPORTANTE: incluir prefijo antes de cifrar
+    const encrypted = encrypt("TRISKEL|" + text);
 
     const payload = `${encrypted.iv}|${encrypted.ciphertext}`;
     const signature = sign(payload);
@@ -116,11 +124,10 @@ app.post("/generate", (req, res) => {
   saveData(data);
 
   const url = `https://${req.get("host")}/qr/${id}`;
-
   return res.send(renderResult(url));
 });
 
-// 👉 API QR
+// API
 app.get("/qr/:id", (req, res) => {
   const data = loadData();
   const item = data[req.params.id];
@@ -132,7 +139,7 @@ app.get("/qr/:id", (req, res) => {
   res.json({ text: item.text });
 });
 
-// 👉 HTML RESULTADO
+// HTML RESULTADO
 function renderResult(content) {
   const encoded = encodeURIComponent(content);
   const qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encoded}`;
