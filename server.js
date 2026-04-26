@@ -1,21 +1,32 @@
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
-const crypto = require("crypto");
+const nacl = require("tweetnacl");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 const DATA_FILE = path.join(__dirname, "data.json");
 
-// 🔐 CLAVE PRIVADA (solo servidor)
-const PRIVATE_KEY = fs.readFileSync(
-  path.join(__dirname, "private.pem"),
-  "utf8"
-);
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// ===============================
+// 🔐 CLAVES ED25519
+// ===============================
+
+// PUBLIC (Flutter la usa)
+const PUBLIC_KEY = "4qqeEnDKehK1k6iqZGUjp0Q7MYmMbhsizKzUZG8jho0=";
+
+// PRIVATE (solo server)
+const PRIVATE_KEY = "NJOOHUlM8xC//6OjVx+DS83ZUTSevaBx50HefnkkOeziqp4ScMp6ErWTqKpkZSOnRDsxiYxuGyLMrNRkbyOGjQ==";
+
+// convert base64 -> Uint8Array
+function b64ToUint8(b64) {
+  return Uint8Array.from(Buffer.from(b64, "base64"));
+}
+
+const privateKeyBytes = b64ToUint8(PRIVATE_KEY);
 
 // ===============================
 // UTILIDADES
@@ -34,24 +45,23 @@ function generateId() {
   return Math.random().toString(36).substring(2, 8);
 }
 
-// 🔐 base64url
+// base64url
 function toBase64Url(buffer) {
-  return buffer
+  return Buffer.from(buffer)
     .toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
 }
 
-// 🔐 FIRMA RSA (SHA256)
+// ===============================
+// 🔐 ED25519 SIGN
+// ===============================
+
 function sign(text) {
-  const signer = crypto.createSign("RSA-SHA256");
+  const message = Buffer.from(text, "utf8");
 
-  // 🔥 IMPORTANTE: sin espacios extra
-  signer.update(text, "utf8");
-  signer.end();
-
-  const signature = signer.sign(PRIVATE_KEY);
+  const signature = nacl.sign.detached(message, privateKeyBytes);
 
   return toBase64Url(signature);
 }
@@ -65,17 +75,17 @@ app.get("/", (req, res) => {
   res.send(`
   <html>
   <body style="background:#111;color:#fff;text-align:center;font-family:sans-serif;">
-    <h2>Triskel QR</h2>
+    <h2>Triskel QR (Ed25519)</h2>
 
     <form action="/generate" method="POST">
-      <textarea name="text" placeholder="Ej: Baño al frente"
+      <textarea name="text" placeholder="Ej: user=12;exp=1710000000"
         style="width:300px;height:80px;" required></textarea>
 
       <br><br>
 
       <select name="type">
-        <option value="plain">QR Firmado (RSA)</option>
-        <option value="smart">QR URL</option>
+        <option value="secure">QR Seguro (Ed25519)</option>
+        <option value="url">QR URL</option>
       </select>
 
       <br><br>
@@ -92,19 +102,23 @@ app.post("/generate", (req, res) => {
 
   if (!text) return res.status(400).send("Texto requerido");
 
-  // 🔥 NORMALIZAR (clave para que coincida con Flutter)
   text = text.trim();
 
-  // 🔐 QR FIRMADO
-  if (type === "plain") {
-    const signature = sign(text);
+  // ===============================
+  // 🔐 QR SEGURO ED25519
+  // ===============================
+  if (type === "secure") {
+    const payload = `TRISKEL.v1|${text}`;
+    const signature = sign(payload);
 
-    const content = `TRISKEL|${text}|${signature}`;
+    const content = `${payload}|${signature}`;
 
     return res.send(renderResult(content));
   }
 
+  // ===============================
   // 🌐 QR URL
+  // ===============================
   const data = loadData();
   const id = generateId();
 
@@ -112,6 +126,7 @@ app.post("/generate", (req, res) => {
   saveData(data);
 
   const url = `https://${req.get("host")}/qr/${id}`;
+
   return res.send(renderResult(url));
 });
 
