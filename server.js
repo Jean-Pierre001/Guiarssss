@@ -8,13 +8,11 @@ const PORT = process.env.PORT || 3000;
 
 const DATA_FILE = path.join(__dirname, "data.json");
 
-// 🔐 CLAVES (DEBEN SER IGUALES EN FLUTTER)
-const AES_KEY = crypto
-  .createHash("sha256")
-  .update("CLAVE_SUPER_SECRETA_TRISKEL_2026")
-  .digest();
-
-const HMAC_KEY = "OTRA_CLAVE_SECRETA_PARA_FIRMAS";
+// 🔐 CLAVE PRIVADA (solo servidor)
+const PRIVATE_KEY = fs.readFileSync(
+  path.join(__dirname, "private.pem"),
+  "utf8"
+);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -36,7 +34,7 @@ function generateId() {
   return Math.random().toString(36).substring(2, 8);
 }
 
-// base64url
+// 🔐 base64url
 function toBase64Url(buffer) {
   return buffer
     .toString("base64")
@@ -45,26 +43,17 @@ function toBase64Url(buffer) {
     .replace(/=+$/, "");
 }
 
-// AES-256-CBC
-function encrypt(text) {
-  const iv = crypto.randomBytes(16);
+// 🔐 FIRMA RSA (SHA256)
+function sign(text) {
+  const signer = crypto.createSign("RSA-SHA256");
 
-  const cipher = crypto.createCipheriv("aes-256-cbc", AES_KEY, iv);
+  // 🔥 IMPORTANTE: sin espacios extra
+  signer.update(text, "utf8");
+  signer.end();
 
-  let encrypted = cipher.update(text, "utf8");
-  encrypted = Buffer.concat([encrypted, cipher.final()]);
+  const signature = signer.sign(PRIVATE_KEY);
 
-  return {
-    iv: toBase64Url(iv),
-    ciphertext: toBase64Url(encrypted),
-  };
-}
-
-// HMAC
-function sign(data) {
-  return toBase64Url(
-    crypto.createHmac("sha256", HMAC_KEY).update(data).digest()
-  );
+  return toBase64Url(signature);
 }
 
 // ===============================
@@ -85,7 +74,7 @@ app.get("/", (req, res) => {
       <br><br>
 
       <select name="type">
-        <option value="plain">QR Seguro (AES + HMAC)</option>
+        <option value="plain">QR Firmado (RSA)</option>
         <option value="smart">QR URL</option>
       </select>
 
@@ -99,18 +88,18 @@ app.get("/", (req, res) => {
 
 // GENERAR QR
 app.post("/generate", (req, res) => {
-  const { text, type } = req.body;
+  let { text, type } = req.body;
 
   if (!text) return res.status(400).send("Texto requerido");
 
-  // 🔐 QR SEGURO
+  // 🔥 NORMALIZAR (clave para que coincida con Flutter)
+  text = text.trim();
+
+  // 🔐 QR FIRMADO
   if (type === "plain") {
-    const encrypted = encrypt("TRISKEL|" + text);
+    const signature = sign(text);
 
-    const payload = `${encrypted.iv}|${encrypted.ciphertext}`;
-    const signature = sign(payload);
-
-    const content = `TRISKEL|${encrypted.iv}|${encrypted.ciphertext}|${signature}`;
+    const content = `TRISKEL|${text}|${signature}`;
 
     return res.send(renderResult(content));
   }
