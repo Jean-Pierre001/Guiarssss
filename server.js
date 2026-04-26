@@ -60,7 +60,7 @@ function encrypt(text) {
   };
 }
 
-// HMAC SHA256
+// HMAC
 function sign(data) {
   return toBase64Url(
     crypto.createHmac("sha256", HMAC_KEY).update(data).digest()
@@ -105,7 +105,6 @@ app.post("/generate", (req, res) => {
 
   // 🔐 QR SEGURO
   if (type === "plain") {
-    // IMPORTANTE: incluir prefijo antes de cifrar
     const encrypted = encrypt("TRISKEL|" + text);
 
     const payload = `${encrypted.iv}|${encrypted.ciphertext}`;
@@ -116,7 +115,7 @@ app.post("/generate", (req, res) => {
     return res.send(renderResult(content));
   }
 
-  // 🌐 QR INTELIGENTE
+  // 🌐 QR URL
   const data = loadData();
   const id = generateId();
 
