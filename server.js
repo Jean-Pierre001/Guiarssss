@@ -1,6 +1,4 @@
 const express = require("express");
-const fs = require("fs");
-const path = require("path");
 const nacl = require("tweetnacl");
 
 const app = express();
@@ -13,10 +11,8 @@ app.use(express.urlencoded({ extended: true }));
 // 🔐 CLAVES ED25519
 // ===============================
 
-// PUBLIC (Flutter)
 const PUBLIC_KEY = "4qqeEnDKehK1k6iqZGUjp0Q7MYmMbhsizKzUZG8jho0=";
 
-// PRIVATE (server only)
 const PRIVATE_KEY = "NJOOHUlM8xC//6OjVx+DS83ZUTSevaBx50HefnkkOeziqp4ScMp6ErWTqKpkZSOnRDsxiYxuGyLMrNRkbyOGjQ==";
 
 function b64ToBytes(b64) {
@@ -46,7 +42,28 @@ function sign(text) {
 }
 
 // ===============================
-// 🧠 QR GENERATION
+// 🏠 HOME (FIX “Cannot GET /”)
+// ===============================
+app.get("/", (req, res) => {
+  res.send(`
+  <html>
+    <body style="background:#111;color:white;text-align:center;font-family:sans-serif;">
+      <h2>TRISKEL QR SERVER</h2>
+      <p>Ed25519 activo</p>
+
+      <form method="POST" action="/generate">
+        <input name="text" placeholder="user=123" style="padding:8px;width:200px" />
+        <br><br>
+
+        <button name="type" value="secure">Generar QR Seguro</button>
+      </form>
+    </body>
+  </html>
+  `);
+});
+
+// ===============================
+// 🧠 GENERAR QR
 // ===============================
 app.post("/generate", (req, res) => {
   let { text, type } = req.body;
@@ -55,8 +72,9 @@ app.post("/generate", (req, res) => {
 
   text = text.trim();
 
+  // 🔐 QR SEGURO
   if (type === "secure") {
-    const payload = `user=${text}`; // puedes cambiar estructura aquí
+    const payload = `user=${text}`;
 
     const messageToSign = `TRISKEL.v1|${payload}`;
     const signature = sign(messageToSign);
@@ -70,23 +88,30 @@ app.post("/generate", (req, res) => {
 });
 
 // ===============================
-// 🌐 UI SIMPLE
+// 🌐 QR VIEW
 // ===============================
 function render(content) {
   const encoded = encodeURIComponent(content);
-  const qr = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encoded}`;
+
+  const qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encoded}`;
 
   return `
   <html>
-  <body style="background:#111;color:white;text-align:center;font-family:sans-serif;">
-    <h3>QR generado</h3>
-    <img src="${qr}" />
-    <pre>${content}</pre>
-  </body>
+    <body style="background:#111;color:white;text-align:center;font-family:sans-serif;">
+      <h3>QR generado</h3>
+
+      <img src="${qrImage}" />
+
+      <pre style="margin-top:20px;">${content}</pre>
+
+      <br>
+      <a href="/" style="color:#4af">Volver</a>
+    </body>
   </html>
   `;
 }
 
+// ===============================
 app.listen(PORT, () => {
   console.log("Server running on port", PORT);
 });
